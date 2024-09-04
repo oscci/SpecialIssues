@@ -1,0 +1,123 @@
+---
+title: "Endogeny analysis"
+output: html_notebook
+---
+https://blog.doaj.org/2023/11/02/new-criteria-for-special-issues/
+Special issues
+
+Journals that publish special issues or other content curated by guest editors must adhere to these additional criteria:
+
+    The Editor-in-Chief must be responsible for the content of the entire journal, including all special issues, which must fall within the scope of the journal
+    Special issue articles must have the same editorial oversight as regular papers, including external peer review, and be clearly labelled
+    Journals must ensure that guest editors’ credentials are checked and approved
+    The Editor-in-Chief or dedicated board members must oversee the guest editors
+    Papers submitted to a special issue by the guest editor(s) must be handled under an independent review process and make up no more than 25% of the issue’s total
+
+DOAJ will not accept a journal if all content in the last year/volume is published as special issues.
+
+All new applications to DOAJ must adhere to these criteria. Any journals previously accepted for inclusion in DOAJ will be removed if they are found to be publishing special issues that do not meet the criteria.
+
+
+
+
+```{r getpackages}
+#install_github("pgomba/MDPI_explorer") #uncomment to install from Github
+library(devtools)
+library(tidyverse)
+
+library(MDPIexploreR)
+
+```
+
+
+```{r getSIdata}
+#NB reading the information from the web is slow. Will depend on the number of Special Issues.
+
+#Here script illustrates with one journal. Can put a list of journals here.
+#Need the abbreviated title, which is part of the webpage name for the journal
+#You may get warnings about NA values - just ignore these
+
+journals <- c(  'batteries' )  #Can have a list here to loop through
+for (jname in journals){
+  
+  myyears <- c(2023:2024)
+  data<-special_issue_find(jname,type="closed",years = myyears)
+  blocksize <- 100 #divide into blocks just in case of problems reading; not really necessary
+  nblocks <- round(length(data)/blocksize,0)
+  #data<-data[length(data):1] #reverse order of records so newest at top
+  
+  print(jname)
+  print(nblocks)
+  for (i in 1:nblocks){
+    print(i)
+    row2<-blocksize*i
+    
+    if(row2>length(data)){row2<-length(data)}
+    row1<-row2-blocksize+1
+    if(row1<0){row1<-1}
+    sidatabit<-guest_editor_info(data[row1:row2],sleep = 0)
+    
+    
+    if(i == 1){sidata<-sidatabit}
+    if(i>1) {sidata<-rbind(sidata,sidatabit)}
+    
+  }
+  
+  sidata<-sidata[complete.cases(sidata),]
+  date <- "040924" #date of runing program here
+  writename <- paste0(jname,date,'_',myyears[1],'_',myyears[2],'.csv')
+  write.csv(sidata,writename,row.names=F)
+  
+  
+  #sidata <- read.csv(writename)
+  nr <- nrow(sidata)
+  #dateformat <- "%Y-%m-%d" #this can vary from journal to journal
+  dateformat <- "%d/%m/%Y"
+  sidata$mydate <- as.Date(sidata$deadline,dateformat) #deadline date
+  sidata$Year <- substr(sidata$mydate, 1,4)
+  shortdf <- sidata[sidata$Year>2022,]
+  shortdf<-shortdf[order(shortdf$deadline,decreasing=TRUE),]
+  shortdf<-shortdf[shortdf$prop_flag>.25,]
+  
+  nuname <- paste0(jname,'SIflagged_',date,'.csv')
+  write.csv(shortdf,nuname,row.names=F)
+}
+system("say Just finished!")
+
+
+```
+Note. This analysis will not give perfectly reproducible results, because the contents of the website will change from day to day.  We have found, for instance, that special issues may be removed, articles may be moved in or out of them, and special issues that were listed as closed may be reopened with a later date for final submissions.
+
+CREATING SUMMARY FILE
+
+We need to create a table of journals with N flagged 
+
+
+```{r countflagged}
+sourcefolder <- "/Users/dorothybishop/Rprojects/SpecialIssues/MDPI_2023_2024"
+myfiles <- list.files(sourcefolder)
+
+
+nf <- length(myfiles)
+
+summarydf <- data.frame(matrix(ncol=3,nrow=nf))
+colnames(summarydf)<-c('Journal','N_SI','flaggedSI')
+summarydf[,1]<-myfiles
+
+for (i in 1:nf){
+  df<-read.csv(paste0(sourcefolder,"/",myfiles[i]))
+  nr<-nrow(df)
+  df$above25<-0
+  w<-which(df$prop_flag>.25)
+  df$above25[w]<-1
+  summarydf[i,2]<-nr
+  summarydf[i,3]<-length(w)
+
+ #if you want to save a file for this journal with the flagged SIs, you can make a subfile and save it
+ #subfile <- df[w,]  #you can save this with the journal name
+}
+
+write.csv(summarydf,'summarySI.csv',row.names=F)
+
+```
+
